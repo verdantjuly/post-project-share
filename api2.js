@@ -51,4 +51,12 @@ app.get("/posts/:id", (req, res) => {
   res.status(200).json({ item: post });
 });
 
+app.post("/posts", (req, res) => {
+  const { title, content, author } = req.body;
+  const sql = `insert into posts(title, content, author) values(?,?,?)`;
+  const result = db.prepare(sql).run(title, content, author);
+  console.log(`result is ${JSON.stringify(result)}`);
+  res.status(201).json({ id: result.lastInsertRowid, title, content });
+});
+
 app.listen(PORT);
