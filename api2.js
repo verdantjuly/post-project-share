@@ -41,4 +41,14 @@ order by createdAt desc limit ? offset ?`;
   res.json({ items: rows, currentPage: page, totalPages: totalPages });
 });
 
+// GET localhost:3000/posts/1
+app.get("/posts/:id", (req, res) => {
+  const id = req.params.id;
+  const sql = `select * from posts where id = ?`;
+  const count_sql = `update posts set count = count + 1 where id = ?`;
+  db.prepare(count_sql).run(id);
+  const post = db.prepare(sql).get(id);
+  res.status(200).json({ item: post });
+});
+
 app.listen(PORT);
