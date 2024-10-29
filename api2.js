@@ -42,14 +42,14 @@ order by createdAt desc limit ? offset ?`;
 });
 
 // GET localhost:3000/posts/1
-app.get("/posts/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = `select * from posts where id = ?`;
-  const count_sql = `update posts set count = count + 1 where id = ?`;
-  db.prepare(count_sql).run(id);
-  const post = db.prepare(sql).get(id);
-  res.status(200).json({ item: post });
-});
+// app.get("/posts/:id", (req, res) => {
+//   const id = req.params.id;
+//   const sql = `select * from posts where id = ?`;
+//   const count_sql = `update posts set count = count + 1 where id = ?`;
+//   db.prepare(count_sql).run(id);
+//   const post = db.prepare(sql).get(id);
+//   res.status(200).json({ item: post });
+// });
 
 app.post("/posts", (req, res) => {
   const { title, content, author } = req.body;
@@ -59,4 +59,114 @@ app.post("/posts", (req, res) => {
   res.status(201).json({ id: result.lastInsertRowid, title, content });
 });
 
+app.put("/posts/:id", (req, res) => {
+  const { id } = req.params;
+  const { title, content } = req.body;
+  const sql = `update posts set title = ?, content = ? where id = ?`;
+  try {
+    const result = db.prepare(sql).run(title, content, id);
+    console.log(`update result : ${JSON.stringify(result)}`);
+    if (result.changes) {
+      // updated count       if 0 fail else success
+      res.status(200).json({ result: "success" });
+    } else {
+      res.status(404).json({ error: `post not found` });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e });
+  }
+});
+
+app.delete("/posts/:id", (req, res) => {
+  const id = req.params.id;
+  const sql = `delete from posts where id = ?`;
+
+  try {
+    const result = db.prepare(sql).run(id);
+    if (result.changes) {
+      res.status(200).json({ result: "success" });
+    } else {
+      res.status(400).json({ result: "post not found" });
+    }
+  } catch (e) {
+    res.status(500).json({ error: e });
+  }
+});
+
+app.post("/posts/:id/comments", (req, res) => {
+  const postId = req.params.id;
+  const { content } = req.body;
+  const result = db
+    .prepare(`insert into comments(postId, content) values(?,?)`)
+    .run(postId, content);
+  res.status(200).json({ id: result.lastInsertRowid, postId, content });
+});
+
+app.get("/posts/:id/comments", (req, res) => {
+  const postId = req.params.id;
+  const comments = db
+    .prepare(`select * from comments where postId = ?`)
+    .all(postId);
+  res.json({ comments });
+});
+
+app.put("/posts/:postId/comments/:id", (req, res) => {
+  const { content } = req.body;
+  const id = req.params.id;
+  const result = db
+    .prepare(`update comments set content = ? where id = ?`)
+    .run(content, id);
+  if (result.changes) {
+    res.status(200).json({ result: "ok", message: "success", error: "" });
+  } else {
+    res.status(404).json({ result: "ok", message: "Comment is not found" });
+  }
+});
+
+app.delete("/posts/:postId/comments/:id", (req, res) => {
+  const id = req.params.id;
+  const result = db.prepare(`delete from comments where id = ?`).run(id);
+  if (result.changes) {
+    res.status(200).json({ result: "ok", message: "success", error: "" });
+  } else {
+    res.status(404).json({ result: "ok", message: "Comment is not found" });
+  }
+});
+
 app.listen(PORT);
+
+// 게시글 상세 GET /posts/1을 요청할 경우 해당 글의 comments에 답글이 있는 경우
+// 게시글 상세와 답글목록을 한번에 조회해 보세요.
+
+app.get("/posts/:id", (req, res) => {
+  const { id } = req.params;
+  const sql = `
+WITH post_comments AS (
+    SELECT 
+        p.*,
+        json_group_array(json_object('id', c.id, 'content', c.content, 'postId', c.postId)) AS comments_data
+    FROM posts p
+    LEFT JOIN comments c ON c.postId = p.id
+    WHERE p.id = ?
+    GROUP BY p.id
+)
+SELECT 
+  id, title, content, author,
+  comments_data
+FROM post_comments;
+
+`;
+  const result = db.prepare(sql).all(id);
+  const commentsData = JSON.parse(result[0].comments_data);
+  result[0].comments_data = commentsData;
+  if (result) {
+    res.status(200).json({
+      result: "ok",
+      message: "success",
+      data: result,
+      error: "",
+    });
+  } else {
+    res.status(404).json({ result: "ok", message: "Post is not found" });
+  }
+});
